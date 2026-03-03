@@ -1,0 +1,118 @@
+{
+    "product_name": "slim2diretta",
+    "service_name": "slim2diretta@1",
+    "config_path": "/etc/default/slim2diretta",
+    "config_type": "cli_opts",
+    "config_var": "SLIM2DIRETTA_OPTS",
+    "groups": [
+        {
+            "name": "General",
+            "collapsed": false,
+            "settings": [
+                {
+                    "key": "server",
+                    "type": "text",
+                    "cli_arg": "-s",
+                    "label": "LMS Server",
+                    "description": "LMS server IP address. Empty = auto-discovery.",
+                    "default": ""
+                },
+                {
+                    "key": "name",
+                    "type": "text",
+                    "cli_arg": "-n",
+                    "label": "Player Name",
+                    "description": "Player name shown in LMS. Empty = hostname.",
+                    "default": ""
+                },
+                {
+                    "key": "verbose",
+                    "type": "boolean",
+                    "cli_arg": "-v",
+                    "label": "Verbose Logging",
+                    "description": "Enable debug logging output",
+                    "default": ""
+                }
+            ]
+        },
+        {
+            "name": "Diretta SDK (Advanced)",
+            "collapsed": true,
+            "settings": [
+                {
+                    "key": "thread-mode",
+                    "type": "number",
+                    "cli_arg": "--thread-mode",
+                    "label": "Thread Mode",
+                    "description": "SDK thread scheduling bitmask: 1=Critical, 2=NoShortSleep, 4=NoSleep4Core, 8=SocketNoBlock, 16=Occupied, 2048=NoSleepForce, 8192=NoJumboFrame",
+                    "default": "",
+                    "min": 0,
+                    "max": 65535
+                },
+                {
+                    "key": "transfer-mode",
+                    "type": "select",
+                    "cli_arg": "--transfer-mode",
+                    "label": "Transfer Mode",
+                    "description": "Packet sizing and scheduling strategy",
+                    "default": "",
+                    "options": [
+                        {"value": "", "label": "Auto (default)"},
+                        {"value": "varmax", "label": "VarMax (packets filled to maximum)"},
+                        {"value": "varauto", "label": "VarAuto (adaptive packet timing)"},
+                        {"value": "fixauto", "label": "FixAuto (fixed packet timing)"},
+                        {"value": "random", "label": "Random (use with Cycle Min Time)"}
+                    ]
+                },
+                {
+                    "key": "cycle-time",
+                    "type": "number",
+                    "cli_arg": "--cycle-time",
+                    "label": "Cycle Time (us)",
+                    "description": "Max packet transmission cycle time in microseconds. Empty = auto-calculated.",
+                    "default": "",
+                    "min": 333,
+                    "max": 10000
+                },
+                {
+                    "key": "cycle-min-time",
+                    "type": "number",
+                    "cli_arg": "--cycle-min-time",
+                    "label": "Cycle Min Time (us)",
+                    "description": "Min cycle time in microseconds (random mode only)",
+                    "default": "",
+                    "min": 333,
+                    "max": 10000
+                },
+                {
+                    "key": "info-cycle",
+                    "type": "number",
+                    "cli_arg": "--info-cycle",
+                    "label": "Info Cycle (us)",
+                    "description": "Info packet cycle time in microseconds (default: 100000 = 100ms)",
+                    "default": "",
+                    "min": 1000
+                },
+                {
+                    "key": "target-profile-limit",
+                    "type": "number",
+                    "cli_arg": "--target-profile-limit",
+                    "label": "Target Profile Limit (us)",
+                    "description": "0 = SelfProfile (host-side only), >0 = TargetProfile with auto-adaptation (default: 200)",
+                    "default": "",
+                    "min": 0
+                },
+                {
+                    "key": "mtu",
+                    "type": "number",
+                    "cli_arg": "--mtu",
+                    "label": "MTU Override (bytes)",
+                    "description": "Force specific MTU. Empty = auto-detect. Common values: 1500, 4096, 9000",
+                    "default": "",
+                    "min": 1500,
+                    "max": 16128
+                }
+            ]
+        }
+    ]
+}
