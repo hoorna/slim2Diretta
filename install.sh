@@ -587,7 +587,7 @@ ExecStart=/usr/bin/python3 /opt/slim2diretta/webui/diretta_webui.py \
 Restart=on-failure
 RestartSec=5
 ProtectSystem=strict
-ReadWritePaths=/etc/default/slim2diretta
+ReadWritePaths=/etc/default/
 ProtectHome=true
 PrivateTmp=true
 
