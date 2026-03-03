@@ -54,10 +54,6 @@ All notable changes to slim2diretta are documented in this file.
   - Changed from `MSMODE_MS3` to `MSMODE_AUTO` for better device compatibility
   - Correct info cycle parameter passed to `DIRETTA::Sync::open()` (was using cycle time)
 
-### Known Limitations
-
-- **Roon radio**: Only FLAC-encoded internet radios work via Roon's Squeezebox emulation. MP3/AAC/OGG radios are not supported by Roon's Slimproto implementation (based on LMS 6.0.x era code). All radio formats work via LMS.
-
 ---
 
 ## v0.2.0 - Test Version (2026-02-27)
