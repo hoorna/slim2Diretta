@@ -479,6 +479,9 @@ setup_systemd_service() {
             print_warning "No editor found. Edit manually: sudo nano $CONFIG_FILE"
         fi
     fi
+
+    # Offer web UI installation
+    setup_webui
 }
 
 # =============================================================================
@@ -527,6 +530,90 @@ update_binary() {
     fi
 
     print_success "Update complete!"
+}
+
+# =============================================================================
+# WEB CONFIGURATION UI
+# =============================================================================
+
+setup_webui() {
+    local INSTALL_DIR="/opt/slim2diretta"
+    local WEBUI_DIR="$INSTALL_DIR/webui"
+    local WEBUI_SERVICE_FILE="/etc/systemd/system/slim2diretta-webui.service"
+    local WEBUI_SRC="$SCRIPT_DIR/webui"
+
+    if [ ! -d "$WEBUI_SRC" ]; then
+        print_info "Web UI source not found, skipping"
+        return 0
+    fi
+
+    echo ""
+    if ! confirm "Install web configuration UI (accessible on port 8081)?"; then
+        print_info "Skipping web UI installation"
+        return 0
+    fi
+
+    # Check Python 3
+    if ! command -v python3 &>/dev/null; then
+        print_error "Python 3 is required for the web UI"
+        print_info "Install with: sudo dnf install python3  (or sudo apt install python3)"
+        return 1
+    fi
+
+    print_info "Installing web UI..."
+
+    sudo mkdir -p "$WEBUI_DIR"
+    sudo cp -r "$WEBUI_SRC/diretta_webui.py" "$WEBUI_DIR/"
+    sudo cp -r "$WEBUI_SRC/config_parser.py" "$WEBUI_DIR/"
+    sudo cp -r "$WEBUI_SRC/profiles" "$WEBUI_DIR/"
+    sudo cp -r "$WEBUI_SRC/templates" "$WEBUI_DIR/"
+    sudo cp -r "$WEBUI_SRC/static" "$WEBUI_DIR/"
+    print_success "Web UI files copied to $WEBUI_DIR"
+
+    # Install systemd service
+    if [ -f "$WEBUI_SRC/slim2diretta-webui.service" ]; then
+        sudo cp "$WEBUI_SRC/slim2diretta-webui.service" "$WEBUI_SERVICE_FILE"
+    else
+        sudo tee "$WEBUI_SERVICE_FILE" > /dev/null <<'WEBUI_SERVICE_EOF'
+[Unit]
+Description=slim2diretta Web Configuration Interface
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/slim2diretta/webui/diretta_webui.py \
+    --profile /opt/slim2diretta/webui/profiles/slim2diretta.json \
+    --port 8081
+Restart=on-failure
+RestartSec=5
+ProtectSystem=strict
+ReadWritePaths=/etc/default/slim2diretta
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+WEBUI_SERVICE_EOF
+    fi
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable slim2diretta-webui.service
+    sudo systemctl restart slim2diretta-webui.service
+
+    # Get IP for display
+    local IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -z "$IP_ADDR" ] && IP_ADDR="<your-ip>"
+
+    echo ""
+    print_success "Web UI installed and running!"
+    echo ""
+    echo "  Access the configuration interface at:"
+    echo "    http://${IP_ADDR}:8081"
+    echo ""
+    echo "  Manage the web UI service:"
+    echo "    sudo systemctl status slim2diretta-webui"
+    echo "    sudo systemctl stop slim2diretta-webui"
+    echo ""
 }
 
 # =============================================================================
@@ -791,8 +878,11 @@ show_main_menu() {
     echo "  6) Test installation"
     echo "     - Verify binaries and list Diretta targets"
     echo ""
+    echo "  7) Install web configuration UI"
+    echo "     - Browser-based settings (port 8081)"
+    echo ""
     if [ "$OS" = "fedora" ]; then
-    echo "  7) Aggressive Fedora optimization"
+    echo "  8) Aggressive Fedora optimization"
     echo "     - For dedicated audio servers only"
     echo ""
     fi
@@ -868,6 +958,10 @@ main() {
             test_installation
             exit 0
             ;;
+        --webui|-w)
+            setup_webui
+            exit 0
+            ;;
         --optimize|-o)
             optimize_fedora_aggressive
             exit 0
@@ -886,6 +980,7 @@ main() {
             echo "  --update, -u        Rebuild and update installed binary"
             echo "  --network, -n       Configure network only"
             echo "  --test, -t          Test installation"
+            echo "  --webui, -w         Install web configuration UI"
             echo "  --optimize, -o      Aggressive Fedora optimization"
             echo "  --uninstall         Remove slim2diretta"
             echo "  --help, -h          Show this help"
@@ -899,8 +994,8 @@ main() {
     while true; do
         show_main_menu
 
-        local max_option=6
-        [ "$OS" = "fedora" ] && max_option=7
+        local max_option=7
+        [ "$OS" = "fedora" ] && max_option=8
 
         read -p "Choose option [1-$max_option/u/q]: " choice
 
@@ -928,6 +1023,9 @@ main() {
                 test_installation
                 ;;
             7)
+                setup_webui
+                ;;
+            8)
                 if [ "$OS" = "fedora" ]; then
                     optimize_fedora_aggressive
                 else
