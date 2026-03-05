@@ -15,7 +15,8 @@ set -e  # Exit on error
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_VERSION="1.1.0"
 INSTALL_BIN="/usr/local/bin"
-SERVICE_FILE="/etc/systemd/system/slim2diretta@.service"
+SERVICE_FILE_TEMPLATE="/etc/systemd/system/slim2diretta@.service"
+SERVICE_FILE_STANDARD="/etc/systemd/system/slim2diretta.service"
 CONFIG_FILE="/etc/default/slim2diretta"
 
 # Auto-detect latest Diretta SDK version
@@ -441,20 +442,59 @@ setup_systemd_service() {
     read -p "Enter Diretta target number to enable (e.g., 1) or press Enter to skip: " TARGET_NUM
 
     if [ -n "$TARGET_NUM" ]; then
-        print_info "5. Enabling service for target $TARGET_NUM..."
-        sudo systemctl enable "slim2diretta@${TARGET_NUM}.service"
-        print_success "Service slim2diretta@${TARGET_NUM} enabled (starts on boot)"
+        # Ask which service type
+        echo ""
+        echo "  Service type:"
+        echo "    1) Standard service  (slim2diretta.service)  - target set in config file"
+        echo "    2) Template service  (slim2diretta@${TARGET_NUM}.service) - target in service name"
+        echo ""
+        read -p "  Choose [1/2] (default: 1): " SERVICE_TYPE
+        SERVICE_TYPE=${SERVICE_TYPE:-1}
+
+        if [ "$SERVICE_TYPE" = "2" ]; then
+            # Template service
+            print_info "5. Installing template service..."
+            sudo cp "$SCRIPT_DIR/slim2diretta@.service" "$SERVICE_FILE_TEMPLATE"
+            # Remove standard service if present
+            if [ -f "$SERVICE_FILE_STANDARD" ]; then
+                sudo systemctl disable slim2diretta.service 2>/dev/null || true
+                sudo rm -f "$SERVICE_FILE_STANDARD"
+            fi
+            sudo systemctl daemon-reload
+            sudo systemctl enable "slim2diretta@${TARGET_NUM}.service"
+            print_success "Template service slim2diretta@${TARGET_NUM} enabled (starts on boot)"
+            SVC_NAME="slim2diretta@${TARGET_NUM}"
+        else
+            # Standard service
+            print_info "5. Installing standard service..."
+            sudo cp "$SCRIPT_DIR/slim2diretta.service" "$SERVICE_FILE_STANDARD"
+            # Remove template service if present
+            if [ -f "$SERVICE_FILE_TEMPLATE" ]; then
+                sudo systemctl disable "slim2diretta@*.service" 2>/dev/null || true
+                sudo rm -f "$SERVICE_FILE_TEMPLATE"
+            fi
+            # Set TARGET in config file
+            if [ -f "$CONFIG_FILE" ]; then
+                sudo sed -i "s/^TARGET=.*/TARGET=${TARGET_NUM}/" "$CONFIG_FILE"
+            fi
+            sudo systemctl daemon-reload
+            sudo systemctl enable slim2diretta.service
+            print_success "Standard service slim2diretta enabled with target $TARGET_NUM (starts on boot)"
+            SVC_NAME="slim2diretta"
+        fi
+    else
+        # No target selected, install template by default
+        print_info "5. Installing template service (no target selected)..."
+        sudo cp "$SCRIPT_DIR/slim2diretta@.service" "$SERVICE_FILE_TEMPLATE"
+        sudo systemctl daemon-reload
+        SVC_NAME="slim2diretta@1"
     fi
 
     echo ""
     print_success "Systemd Service Installation Complete!"
     echo ""
     echo "  Binary:        $INSTALL_BIN/slim2diretta"
-    echo "  Service file:  $SERVICE_FILE"
     echo "  Configuration: $CONFIG_FILE"
-    echo ""
-    echo "  The service uses a template: slim2diretta@<target>"
-    echo "  The target number is passed as --target <N>"
     echo ""
     echo "  Next steps:"
     echo "    1. Edit configuration (optional):"
@@ -463,13 +503,13 @@ setup_systemd_service() {
     echo "       - Set player name, verbose mode, etc."
     echo ""
     echo "    2. Start the service:"
-    echo "       sudo systemctl start slim2diretta@${TARGET_NUM:-1}"
+    echo "       sudo systemctl start $SVC_NAME"
     echo ""
     echo "    3. Check status:"
-    echo "       sudo systemctl status slim2diretta@${TARGET_NUM:-1}"
+    echo "       sudo systemctl status $SVC_NAME"
     echo ""
     echo "    4. View logs:"
-    echo "       sudo journalctl -u slim2diretta@${TARGET_NUM:-1} -f"
+    echo "       sudo journalctl -u $SVC_NAME -f"
     echo ""
 
     # Offer to edit configuration
@@ -506,9 +546,9 @@ update_binary() {
         return 1
     fi
 
-    # Stop running instances
+    # Stop running instances (both template and standard)
     local running_instances=$(systemctl list-units --type=service --state=running \
-        'slim2diretta@*' 2>/dev/null | grep slim2diretta | awk '{print $1}')
+        'slim2diretta*' 2>/dev/null | grep -E 'slim2diretta(@[0-9]+)?\.service' | awk '{print $1}')
 
     if [ -n "$running_instances" ]; then
         print_info "Stopping running instances..."
@@ -523,6 +563,14 @@ update_binary() {
     sudo chmod +x "$INSTALL_BIN/slim2diretta"
     sudo cp "$SCRIPT_DIR/start-slim2diretta.sh" "$INSTALL_BIN/start-slim2diretta.sh"
     sudo chmod +x "$INSTALL_BIN/start-slim2diretta.sh"
+    # Update service file(s)
+    if [ -f "$SERVICE_FILE_STANDARD" ]; then
+        sudo cp "$SCRIPT_DIR/slim2diretta.service" "$SERVICE_FILE_STANDARD"
+    fi
+    if [ -f "$SERVICE_FILE_TEMPLATE" ]; then
+        sudo cp "$SCRIPT_DIR/slim2diretta@.service" "$SERVICE_FILE_TEMPLATE"
+    fi
+    sudo systemctl daemon-reload
     print_success "Binary updated: $INSTALL_BIN/slim2diretta"
 
     # Restart stopped instances
@@ -748,8 +796,10 @@ test_installation() {
     fi
 
     # Check systemd service
-    if [ -f "$SERVICE_FILE" ]; then
-        print_success "Systemd service: $SERVICE_FILE OK"
+    if [ -f "$SERVICE_FILE_STANDARD" ]; then
+        print_success "Systemd service: $SERVICE_FILE_STANDARD OK (standard)"
+    elif [ -f "$SERVICE_FILE_TEMPLATE" ]; then
+        print_success "Systemd service: $SERVICE_FILE_TEMPLATE OK (template)"
     else
         print_warning "Systemd service not installed"
     fi
@@ -774,10 +824,10 @@ test_installation() {
         fi
     }
 
-    # Check running instances
+    # Check running instances (both template and standard)
     echo ""
     local running=$(systemctl list-units --type=service --state=running \
-        'slim2diretta@*' 2>/dev/null | grep slim2diretta || true)
+        'slim2diretta*' 2>/dev/null | grep -E 'slim2diretta(@[0-9]+)?\.service' || true)
     if [ -n "$running" ]; then
         print_success "Running instances:"
         echo "$running" | awk '{print "  " $1 " - " $3}'
@@ -798,7 +848,7 @@ uninstall() {
 
     echo "This will remove:"
     echo "  - Binary: $INSTALL_BIN/slim2diretta"
-    echo "  - Service: $SERVICE_FILE"
+    echo "  - Service files (template and/or standard)"
     echo "  - Configuration: $CONFIG_FILE (optional)"
     echo ""
 
@@ -807,9 +857,9 @@ uninstall() {
         return 0
     fi
 
-    # Stop and disable all instances
+    # Stop and disable all instances (both template and standard)
     local instances=$(systemctl list-units --type=service --all \
-        'slim2diretta@*' 2>/dev/null | grep slim2diretta | awk '{print $1}')
+        'slim2diretta*' 2>/dev/null | grep -E 'slim2diretta(@[0-9]+)?\.service' | awk '{print $1}')
     for svc in $instances; do
         sudo systemctl stop "$svc" 2>/dev/null || true
         sudo systemctl disable "$svc" 2>/dev/null || true
@@ -823,11 +873,17 @@ uninstall() {
         print_success "Binary and startup script removed"
     fi
 
-    # Remove service file
-    if [ -f "$SERVICE_FILE" ]; then
-        sudo rm "$SERVICE_FILE"
+    # Remove service files (both types)
+    local svc_removed=false
+    for svc_file in "$SERVICE_FILE_TEMPLATE" "$SERVICE_FILE_STANDARD"; do
+        if [ -f "$svc_file" ]; then
+            sudo rm "$svc_file"
+            svc_removed=true
+        fi
+    done
+    if $svc_removed; then
         sudo systemctl daemon-reload
-        print_success "Service file removed"
+        print_success "Service file(s) removed"
     fi
 
     # Remove configuration (ask first)
@@ -912,14 +968,14 @@ run_full_installation() {
     echo "  1. Edit configuration (optional, for LMS IP / player name):"
     echo "     sudo nano $CONFIG_FILE"
     echo ""
-    echo "  2. Start the service (replace 1 with your target number):"
-    echo "     sudo systemctl start slim2diretta@1"
+    echo "  2. Start the service:"
+    echo "     sudo systemctl start ${SVC_NAME:-slim2diretta}"
     echo ""
     echo "  3. Check status:"
-    echo "     sudo systemctl status slim2diretta@1"
+    echo "     sudo systemctl status ${SVC_NAME:-slim2diretta}"
     echo ""
     echo "  4. View logs:"
-    echo "     sudo journalctl -u slim2diretta@1 -f"
+    echo "     sudo journalctl -u ${SVC_NAME:-slim2diretta} -f"
     echo ""
     echo "  5. Open LMS web interface and select 'slim2diretta' as player"
     echo ""

@@ -1,10 +1,26 @@
 {
     "product_name": "slim2diretta",
-    "service_name": "slim2diretta@1",
+    "service_name": "auto",
     "config_path": "/etc/default/slim2diretta",
     "config_type": "cli_opts",
     "config_var": "SLIM2DIRETTA_OPTS",
     "groups": [
+        {
+            "name": "Service",
+            "collapsed": false,
+            "config_type": "shell_vars",
+            "settings": [
+                {
+                    "key": "TARGET",
+                    "type": "number",
+                    "label": "Diretta Target",
+                    "description": "Target index (run 'sudo slim2diretta --list-targets' to find available targets)",
+                    "default": "1",
+                    "min": 1,
+                    "max": 99
+                }
+            ]
+        },
         {
             "name": "General",
             "collapsed": false,
