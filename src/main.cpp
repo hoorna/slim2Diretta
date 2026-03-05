@@ -503,7 +503,18 @@ int main(int argc, char* argv[]) {
                 uint16_t streamPort = cmd.getServerPort();
                 if (streamPort == 0) streamPort = SLIMPROTO_HTTP_PORT;
 
-                // === GAPLESS PATH: audio thread is running, queue next track ===
+                // === SEEK/RESTART: thread stopping (stop/flush received) but not done yet ===
+                // Must join before cold start, otherwise gapless path would be taken incorrectly.
+                if (!audioThreadDone.load(std::memory_order_acquire) &&
+                    !audioTestRunning.load(std::memory_order_acquire)) {
+                    LOG_INFO("[Seek] Waiting for audio thread to finish...");
+                    if (audioTestThread.joinable()) {
+                        audioTestThread.join();
+                    }
+                    audioThreadDone.store(true, std::memory_order_release);
+                }
+
+                // === GAPLESS PATH: audio thread is actively playing, queue next track ===
                 if (!audioThreadDone.load(std::memory_order_acquire)) {
                     LOG_INFO("[Gapless] Audio thread active, queuing next track");
 
