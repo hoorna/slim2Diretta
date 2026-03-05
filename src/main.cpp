@@ -677,12 +677,14 @@ int main(int argc, char* argv[]) {
                             if (stmdSent && dsdReader->availableBytes() == 0 &&
                                 dsdReader->isFinished()) {
                                 if (hasPendingTrack.load(std::memory_order_acquire)) {
+                                    LOG_INFO("[Gapless] DSD pending detected, breaking to chain");
                                     break;  // Got pending → exit loop to chain
                                 }
                                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                                     std::chrono::steady_clock::now() - gaplessWaitStart).count();
                                 if (elapsed >= GAPLESS_WAIT_MS) {
                                     gaplessWaitDone = true;
+                                    LOG_INFO("[Gapless] DSD wait timeout (" << GAPLESS_WAIT_MS << "ms), no pending track");
                                     break;  // Timeout → exit loop normally
                                 }
                                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
