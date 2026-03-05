@@ -635,7 +635,7 @@ int main(int argc, char* argv[]) {
                         while (audioTestRunning.load(std::memory_order_acquire) &&
                                (!httpEof || dsdReader->availableBytes() > 0 ||
                                 !dsdReader->isFinished() ||
-                                (stmdSent && !gaplessWaitDone && !hasPendingTrack.load(std::memory_order_acquire)))) {
+                                (stmdSent && !gaplessWaitDone))) {
 
                             // === PHASE 1: HTTP read + feed ===
                             // Flow control: don't read HTTP when internal buffer is large
