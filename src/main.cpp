@@ -764,8 +764,14 @@ int main(int argc, char* argv[]) {
                             }
                         }
 
-                        // === DRAIN remaining data ===
+                        // === DRAIN remaining data + gapless wait ===
+                        // Send STMd early so LMS can prepare next track while we drain
                         dsdReader->setEof();
+                        LOG_INFO("[Audio] DSD stream complete: " << totalBytes << " bytes received, "
+                                 << pushedDsdBytes << " DSD bytes pushed");
+                        slimproto->sendStat(StatEvent::STMd);
+
+                        // Drain remaining DSD data while also waiting for pending
                         while (direttaOpened &&
                                audioTestRunning.load(std::memory_order_acquire)) {
                             // Wait for DirettaSync space
@@ -795,15 +801,11 @@ int main(int argc, char* argv[]) {
                             }
                         }
 
-                        LOG_INFO("[Audio] DSD stream complete: " << totalBytes << " bytes received, "
-                                 << pushedDsdBytes << " DSD bytes pushed");
-
-                        slimproto->sendStat(StatEvent::STMd);
-
                         // === GAPLESS: wait for LMS to send next strm-s ===
+                        // Ring buffer still has audio being consumed by DAC
                         if (!hasPendingTrack.load(std::memory_order_acquire) &&
                             audioTestRunning.load(std::memory_order_acquire)) {
-                            LOG_DEBUG("[Gapless] STMd sent, waiting for next track...");
+                            LOG_DEBUG("[Gapless] DSD: waiting for next track...");
                             auto waitStart = std::chrono::steady_clock::now();
                             constexpr int GAPLESS_WAIT_MS = 2000;
                             while (!hasPendingTrack.load(std::memory_order_acquire) &&
@@ -1192,8 +1194,25 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
-                    // Drain: decoder may have remaining frames after HTTP EOF
+                    // Send STMd early — before drain — so LMS can prepare next track
+                    // while we still push remaining audio to the ring buffer
                     decoder->setEof();
+
+                    // Final elapsed time
+                    if (decoder->isFormatReady()) {
+                        auto fmt = decoder->getFormat();
+                        uint64_t decoded = decoder->getDecodedSamples();
+                        uint32_t elapsedSec = fmt.sampleRate > 0
+                            ? static_cast<uint32_t>(decoded / fmt.sampleRate) : 0;
+                        LOG_INFO("[Audio] Stream complete: " << totalBytes << " bytes received, "
+                                 << decoded << " frames decoded (" << elapsedSec << "s)");
+                    } else {
+                        LOG_INFO("[Audio] Stream ended (" << totalBytes << " bytes received)");
+                    }
+
+                    slimproto->sendStat(StatEvent::STMd);  // Decoder finished
+
+                    // Drain: decoder may have remaining frames after HTTP EOF
                     while (!decoder->isFinished() && !decoder->hasError() &&
                            audioTestRunning.load(std::memory_order_acquire)) {
                         size_t frames = decoder->readDecoded(decodeBuf, MAX_DECODE_FRAMES);
@@ -1254,24 +1273,11 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
-                    // Final elapsed time
-                    if (decoder->isFormatReady()) {
-                        auto fmt = decoder->getFormat();
-                        uint64_t decoded = decoder->getDecodedSamples();
-                        uint32_t elapsedSec = fmt.sampleRate > 0
-                            ? static_cast<uint32_t>(decoded / fmt.sampleRate) : 0;
-                        LOG_INFO("[Audio] Stream complete: " << totalBytes << " bytes received, "
-                                 << decoded << " frames decoded (" << elapsedSec << "s)");
-                    } else {
-                        LOG_INFO("[Audio] Stream ended (" << totalBytes << " bytes received)");
-                    }
-
-                    slimproto->sendStat(StatEvent::STMd);  // Decoder finished
-
                     // === GAPLESS: wait for LMS to send next strm-s ===
+                    // Ring buffer still has audio being consumed by DAC
                     if (!hasPendingTrack.load(std::memory_order_acquire) &&
                         audioTestRunning.load(std::memory_order_acquire)) {
-                        LOG_DEBUG("[Gapless] STMd sent, waiting for next track...");
+                        LOG_DEBUG("[Gapless] PCM: waiting for next track...");
                         auto waitStart = std::chrono::steady_clock::now();
                         constexpr int GAPLESS_WAIT_MS = 2000;
                         while (!hasPendingTrack.load(std::memory_order_acquire) &&
